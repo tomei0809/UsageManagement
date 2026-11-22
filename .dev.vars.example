@@ -1,0 +1,8 @@
+# ローカル開発用。.dev.vars にコピーして使う(.dev.vars は Git に含めない)
+REQUIRE_ACCESS=false
+# 秘密情報の暗号化鍵(base64 の 32 バイト)。生成:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# 本番は `npx wrangler secret put MASTER_KEY` で設定する(変えると保存済みのトークンは復号できなくなる)
+MASTER_KEY=
+# デモ用コレクター(外部 API を呼ばない)を有効化。本番では設定しない
+ENABLE_DEMO_COLLECTOR=true

@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "usage-management",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+  // React SPA(dist/client)を配信。/api/* だけ Worker を先に通す
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "usage-management",
+      // `npx wrangler d1 create usage-management` の出力した ID に置き換える(ローカル開発はこのままで可)
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // 6 時間ごとに自動取得。アプリを使わなくなったら [] にしてデプロイすると Worker の定期起動そのものが止まる(画面からの停止は D1 の設定で行う)
+  "triggers": { "crons": ["0 */6 * * *"] },
+  "vars": {
+    // 本番では Cloudflare Access の JWT 検証を必須にする(未設定なら API は 503 を返す=fail closed)
+    "REQUIRE_ACCESS": "true",
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    // 通知文の日付のタイムゾーン
+    "TIMEZONE": "Asia/Tokyo"
+  }
+}

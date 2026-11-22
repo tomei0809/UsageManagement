@@ -1,0 +1,24 @@
+# 個人用開発メモ(公開しない)
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+
+# 依存・ビルド成果物
+node_modules/
+dist/
+.wrangler/
+coverage/
+
+# 秘密情報
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
