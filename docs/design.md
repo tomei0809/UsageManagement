@@ -238,3 +238,10 @@ UsageManagement/
 - **料金のまとめ**:単位 USD の指標を合計。新しいテーブルは作らない。
 - **AWS S3**:`aws4fetch` で SigV4 署名し、GetMetricStatistics(Query / XML)を呼ぶ。GetMetricData は常に課金のため使わない。
 - 通知文の日付は `TIMEZONE`(wrangler vars、既定 Asia/Tokyo)。
+
+## 19. 本番運用の構成(2026-11-23)
+- Cloudflare Workers(workers.dev)にデプロイ。Cron `0 */6 * * *`、D1 は本番用を別に作成(`database_id` は wrangler.jsonc)。
+- 保護:Cloudflare Access の Self-hosted アプリ(宛先 = workers.dev のホスト名、ポリシー = 自分のメールのみ Allow、ログインは One-time PIN)。エッジで未ログインをログイン画面へリダイレクトし、Worker でも `Cf-Access-Jwt-Assertion`(チームドメインの公開鍵・AUD・期限・発行者)を検証する二重構え。
+- プレビュー URL は `preview_urls: false` で無効(Access の宛先外の入口を作らない)。
+- 秘密情報は Workers Secret の `MASTER_KEY` のみ。トークン・Webhook URL は D1 に暗号化して保存。
+- 実アカウント確認済み:GitHub Actions(Plan: Read-only)、AWS S3(GetMetricStatistics)、Discord、Access。

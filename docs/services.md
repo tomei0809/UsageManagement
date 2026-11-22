@@ -103,6 +103,8 @@
 | 2026-11-22 | GitHub Actions | 個人アカウント + fine-grained トークンで「今すぐ取得」 | 成功。当月の Actions 分数(108 minutes)を取得できた。ユーザー向けエンドポイントに Actions が含まれることを確認。GitHub の Billing 画面の値との一致は未確認 |
 | 2026-11-22 | GitHub Actions | 本番(Cloudflare)で権限なしの fine-grained トークン | HTTP 403「Resource not accessible by personal access token」。Account permissions の **Plan: Read-only** を付けると成功。→ 必要な権限は Plan: Read-only と確定 |
 | 2026-11-22 | Discord 通知 | 本番で Webhook URL を保存し「テスト送信」 | 成功。指定チャンネルにテスト通知が届いた |
+| 2026-11-23 | AWS S3 | 本番で専用 IAM ユーザー(`cloudwatch:GetMetricStatistics` のみ)のキーを登録し「今すぐ取得」 | 成功。AWS Query / XML 形式で使用容量とオブジェクト数を取得できた。1 サービス = 1 バケット |
+| 2026-11-23 | Cloudflare Access | 本番(workers.dev)を Self-hosted アプリで保護 | ログインなしのトップページ・API はログイン画面へリダイレクト(302)、偽トークンも拒否。メールのコードでログインできることを確認 |
 
 ## 実装状況(第3段階)
 
@@ -112,7 +114,7 @@
 | `cloudflare-workers` | 実装済み | 偽の応答で確認(合計、GraphQL エラー、アカウントなし) | 未 |
 | `openai-costs` | 実装済み | 偽の応答で確認(ページ送り、USD 以外) | 未 |
 | `google-drive` | 実装済み | 偽の応答で確認(トークン更新、上限なし、失効) | 未 |
-| `aws-s3` | 実装済み | 偽の応答で確認(クエリ、XML 解析、署名、データなし、403) | 偽キーで形式のみ確認。値の取得は未 |
+| `aws-s3` | 実装済み | 偽の応答で確認(クエリ、XML 解析、署名、データなし、403) | **済**(本番、2026-11-23) |
 | Supabase / Vercel / Claude | 手動入力(Supabase・Vercel は将来候補) | — | — |
 
 実アカウントで確認したら、上の「検証ログ」に日付・結果を書き、この表の「実アカウント検証」を更新してください。
@@ -126,7 +128,8 @@
   出典:<https://aws.amazon.com/cloudwatch/pricing/>
 - GetMetricStatistics:Period は 15〜63 日前なら 300 の倍数など。1 回 1,440 点まで。データ点は時系列順とは限らない。
   出典:<https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_GetMetricStatistics.html>
-- 通信形式(AWS Query プロトコル、`Action=GetMetricStatistics&Version=2010-08-01`、応答 XML)は API リファレンスに明記なし。偽のキーで実際に呼ぶと `InvalidClientTokenId` の XML(`xmlns="http://monitoring.amazonaws.com/doc/2010-08-01/"`)が返り、エンドポイントと形式は正しいことを確認(2026-11-22)。正しいキーでの値の取得は未確認。
+- 通信形式(AWS Query プロトコル、`Action=GetMetricStatistics&Version=2010-08-01`、応答 XML)は API リファレンスに明記なし。偽のキーで `InvalidClientTokenId` の XML が返ることを確認(2026-11-22)し、実キーで値を取得できることも確認(2026-11-23)。
+- 1 サービスで 1 バケット。AWS の無料枠はアカウント全体の合計にかかるため、複数バケットを合計する機能は将来候補。
 - 無料プラン(新方式):「$100 のクレジット、6 か月で最大 $200」。「6 か月後またはクレジットを使い切った時点の早いほうで終了」。終了後は**アカウントが自動で閉じられ**、データは 90 日保持(その間に有料プランへ切り替えれば復元)。有料プランはクレジットがなくなっても閉じない。
   出典:<https://aws.amazon.com/free/> , <https://aws.amazon.com/free/free-tier-faqs/> , <https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/free-tier-plans.html>
 - 旧方式(12 か月無料枠)の終了後の扱いと、S3 の無料枠容量(5 GB など)は今回読んだページに記載なし → 自分の請求ダッシュボードで確認。

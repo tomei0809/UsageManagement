@@ -4,7 +4,7 @@ GitHub Actions、Cloudflare、AWS S3、Supabase、Vercel、Claude、OpenAI、Goo
 
 サービスごとに上限・単位・リセット日・確認方法が違うため、一つずつ管理画面を開かないと状況がわかりません。このアプリは使用量を一か所にまとめ、上限に近づいたら気づけるようにします。
 
-> **ステータス:第4段階(超過予測・Discord 通知・無料期間の管理・料金のまとめ・AWS S3)まで実装済み。** 各コレクターは公式ドキュメントに沿って実装し、偽の応答でテストしています。実アカウントで確認済みなのは GitHub Actions のみです(ほかは [docs/services.md](docs/services.md) の「要検証」)。
+> **ステータス:第4段階まで実装済みで、Cloudflare 上で運用中。** 実アカウントで動作を確認済みなのは **GitHub Actions・AWS S3 の自動取得、Discord 通知、Cloudflare Access によるログイン保護**です。Cloudflare Workers・OpenAI・Google Drive のコレクターは偽の応答でのテストのみです([docs/services.md](docs/services.md) の「検証ログ」)。
 
 ---
 
@@ -27,11 +27,11 @@ GitHub Actions、Cloudflare、AWS S3、Supabase、Vercel、Claude、OpenAI、Goo
 - **公式 API からの自動取得**(Cron で 6 時間ごと)。サービス詳細の「自動取得」で取得方法を選び、トークンなどを入力すると、対応する指標が作られます。
   | 取得方法 | 取得する値 | 必要な認証 |
   |---|---|---|
-  | GitHub Actions | 当月の Actions 使用分数、超過料金(USD) | Personal access token |
+  | GitHub Actions | 当月の Actions 使用分数、超過料金(USD) | Fine-grained トークン(Account permissions の **Plan: Read-only**) |
   | Cloudflare Workers | 当日(UTC)のリクエスト数(アカウント全体) | API トークン(Account Analytics: Read) |
   | OpenAI API | 当月の利用料金(USD) | Admin キー |
   | Google Drive | 使用容量(上限も自動で反映) | OAuth クライアント + リフレッシュトークン |
-  | AWS S3 | バケットの使用容量(Standard)・オブジェクト数(1 日 1 回更新) | IAM アクセスキー(CloudWatch 読み取りのみ) |
+  | AWS S3 | バケットの使用容量(Standard)・オブジェクト数(1 日 1 回更新)。**1 サービス = 1 バケット** | IAM アクセスキー(`cloudwatch:GetMetricStatistics` のみ) |
 - **今月の過去分を取得**(GitHub Actions):当月 1 日〜昨日の使用量を 1 日ずつ取得して日別グラフを埋めます。何度実行しても重複しません。
 - **今すぐ取得**ボタン、**取得履歴**(成功・失敗とエラー内容)、ダッシュボードの「取得失敗」表示。
 - **失敗時の扱い**:一時的なエラー(429 / 5xx / 通信エラー)はその場で 2 回まで再試行します。それでも失敗したら次の再試行までの間隔を 6 → 12 → 24 → 48 時間と延ばし、連続 N 回(既定 5 回)失敗したらそのサービスの定期取得を自動停止します。
@@ -171,18 +171,73 @@ http://localhost:5173/cdn-cgi/handler/scheduled?cron=0+*/6+*+*+*
 
 ### Cloudflare にデプロイする
 
-1. `npx wrangler login`
-2. `npx wrangler d1 create usage-management` を実行し、表示された `database_id` を `wrangler.jsonc` に書き込みます。
-3. `npm run db:migrate:remote`
-4. 暗号化鍵を Secret に登録します(上の `node -e ...` で生成した値を入力)。**この鍵を変えると保存済みのトークンは復号できなくなり、接続設定の入れ直しが必要になります。**
-   ```bash
-   npx wrangler secret put MASTER_KEY
+1. **ログイン**:`npx wrangler login`(ブラウザで許可)
+2. **本番 DB を作る**:`npx wrangler d1 create usage-management` を実行し、表示された `database_id` を `wrangler.jsonc` に書き込みます。
+   > ローカルの D1 は `database_id` ごとに別ファイルになるため、ID を変えるとローカルのデータが見えなくなります。残したい場合は、変更前に `npx wrangler d1 export usage-management --local --output backup.sql` で書き出し、変更後に `npm run db:migrate:local` でテーブルを作ってから、バックアップの `INSERT` 文だけを取り込んでください。
+3. **テーブルを作る**:`npm run db:migrate:remote`
+4. **デプロイ**:`npm run deploy`(`https://usage-management.<サブドメイン>.workers.dev` に公開されます。Access を設定するまで API は 503 を返し、データは見えません)
+5. **暗号化鍵を Secret に登録**(Worker ができた後に実行。鍵は画面に表示されません):
+   ```powershell
+   node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))" | npx wrangler secret put MASTER_KEY
    ```
-5. `npm run deploy`
-6. **Cloudflare Access を設定します**(未設定のままだと API は 503 を返し、使えません):
-   1. Cloudflare ダッシュボード → Zero Trust → Access → Applications で Self-hosted アプリを作り、デプロイ先のドメイン(`*.workers.dev` またはカスタムドメイン)を対象にします。
-   2. ポリシーで自分のメールアドレスだけを許可します。
-   3. アプリの **Application Audience (AUD) タグ**とチームドメイン(`<team>.cloudflareaccess.com`)を `wrangler.jsonc` の `vars`(`ACCESS_AUD` と `ACCESS_TEAM_DOMAIN`)に設定し、もう一度デプロイします。
+   **この鍵を変えると保存済みのトークンは復号できなくなり、接続設定の入れ直しが必要になります。**
+6. **Cloudflare Access を設定**(自分だけがログインできるようにする):
+   1. Cloudflare ダッシュボード → **Zero Trust**(Cloudflare One)を開きます。初回はチーム名とプラン(**Free**)を選びます。Free プランでも支払い方法の登録を求められることがあります(Free / 50 ユーザー以内なら $0)。
+   2. **Access controls** → **Applications** →(アプリを追加)→ **Self-hosted** を選びます(画面の構成は変わることがあります)。
+   3. **宛先(パブリックホスト名)**:サブドメイン `usage-management`、ドメイン `<サブドメイン>.workers.dev`、パスは空欄。
+   4. **Access ポリシー**:新しいポリシーを作り、Action **Allow**、Include → **Emails** に自分のメールアドレス。
+   5. **認証**:「利用可能なすべての ID プロバイダーを受け入れる」のまま(メールに届くコードでログインする One-time PIN が含まれます)。
+   6. 保存後、アプリの設定から **AUD タグ**を、Zero Trust の設定から**チーム名**を確認し、`wrangler.jsonc` の `vars` に `ACCESS_AUD` と `ACCESS_TEAM_DOMAIN`(`<チーム名>.cloudflareaccess.com`)を書いて、もう一度 `npm run deploy` します。
+7. **確認**:URL を開くと Cloudflare のログイン画面に移動し、メールのコードでログインできれば完了です。ログインしていないリクエストや偽のトークンは、API に届く前に拒否されます。
+
+`wrangler.jsonc` では、版ごとの確認用 URL(プレビュー URL)を `"preview_urls": false` で無効にしています(デプロイのたびに有効へ戻るのを防ぐため)。
+
+### 本番で最初にやること
+
+ローカルと本番の DB は別なので、本番の画面で改めて登録します。
+
+1. **サービスと指標**を追加し、各指標に**上限値**(無料枠)を入れます。上限値がないと使用率・予測・通知は働きません。
+2. **自動取得**を設定します(下記「[サービスごとの接続](#サービスごとの接続)」)。GitHub Actions は「今月の過去分を取得」で月初からの日別グラフも埋められます。
+3. **Discord 通知**:設定 → Webhook URL を保存 →「テスト送信」。
+4. 期限つきの無料期間があるサービス(AWS など)は、編集画面で**無料期間の終了日**を入れます。
+
+### サービスごとの接続
+
+#### GitHub Actions
+1. GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token。
+2. **Resource owner** を自分に、**Account permissions** の **Plan** を **Read-only** にします(これが無いと HTTP 403「Resource not accessible by personal access token」)。有効期限は長めに(期限切れ前に GitHub からメールが届きます)。
+3. アプリの自動取得で「GitHub Actions」を選び、ユーザー名とトークンを入力 →「今すぐ取得」。
+4. 指標「Actions 実行時間」の上限値に、GitHub の Billing で確認した無料枠の分数を入れます。
+
+#### AWS S3
+1. AWS コンソール → **IAM** → ユーザーの作成(例:`usage-management-reader`、コンソールアクセスなし)。
+2. 「ポリシーを直接アタッチする」→「ポリシーの作成」→ **JSON** に切り替えて次を貼り付け、ポリシーを作ってユーザーに付けます。
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       { "Effect": "Allow", "Action": "cloudwatch:GetMetricStatistics", "Resource": "*" }
+     ]
+   }
+   ```
+3. ユーザー → セキュリティ認証情報 → **アクセスキーを作成**(用途:AWS の外部で実行されるアプリケーション)。シークレットはその画面でしか表示されません。**ルートユーザーのキーは使わないでください。**
+4. アプリの自動取得で「AWS S3」を選び、リージョン(バケットのあるリージョン、例:`ap-northeast-1`)・バケット名・キーを入力 →「今すぐ取得」。
+5. 指標「S3 使用容量(Standard)」の上限値は **bytes** で入れます(例:5 GB = `5368709120`)。無料枠の容量はアカウントの種類で違うので、AWS の Billing で確認してください。
+
+- **1 サービスで扱えるのは 1 バケット**です。複数のバケットは、バケットごとにサービスを作ります。IAM のキーは使い回せます。
+- AWS の無料枠は**アカウント全体の合計**にかかるので、バケットごとに分けると「合計では超えているのに警告が出ない」ことがあります。複数バケットの合計を 1 つのサービスで取る機能は今後の候補です。
+- 作成直後や空のバケットは、最初のデータが届くまで約 1 日かかります(「データがありません」と表示されます)。
+
+#### Discord
+1. Discord で通知を送りたいチャンネルの歯車 → **連携サービス** → **ウェブフックを作成** →「ウェブフック URL をコピー」。
+2. アプリの **設定** → Discord 通知 → Webhook URL を保存 →「テスト送信」。
+- Webhook URL を知っていれば誰でも投稿できるので、チャットや Git に貼らないでください(アプリでは暗号化して保存)。
+
+### 普段の使い方
+
+- 何もしなくても 6 時間ごとに自動取得し、使用率が 注意 → 警告 → 上限到達 と上がった時や超過見込みになった時に Discord に届きます。
+- 手動入力のサービス(Claude・Supabase・Vercel など)は、管理画面を見て時々入力します。入力が途切れると「データが古い」と表示されます。
+- トークンの期限切れなどで取得が失敗し続けると、自動停止して通知されます。新しいトークンを「接続設定を変更」で入れ替え、「再開」を押してください。
 
 ---
 
@@ -223,9 +278,10 @@ http://localhost:5173/cdn-cgi/handler/scheduled?cron=0+*/6+*+*+*
 |---|---|---|
 | 1 | サービス・指標の CRUD、手動入力、使用率の計算、ダッシュボード | ✅ |
 | 2 | 日別・月別の推移グラフ、閾値の色分け、リセット日の管理 | ✅ |
-| 3 | API による自動取得(GitHub → Cloudflare → OpenAI → Google Drive)、取得失敗の扱い、定期チェックの停止・再開 | ✅(実アカウントでの検証は未完了) |
-| 4 | 超過予測、Discord 通知、無料期間の管理、料金のまとめ、AWS S3 | ✅(AWS S3 の実アカウント検証は未完了) |
-| 今後 | Supabase / Vercel の自動取得、予測の改善 など | 未定 |
+| 3 | API による自動取得(GitHub → Cloudflare → OpenAI → Google Drive)、取得失敗の扱い、定期チェックの停止・再開 | ✅(GitHub は実アカウントで確認済み) |
+| 4 | 超過予測、Discord 通知、無料期間の管理、料金のまとめ、AWS S3 | ✅(Discord・AWS S3 は実アカウントで確認済み) |
+| 運用 | Cloudflare へのデプロイ、Cloudflare Access による保護 | ✅ |
+| 今後 | AWS S3 の複数バケット合計、Supabase / Vercel の自動取得、AWS Free Tier API で無料期間の終了日を自動入力 など | 未定 |
 
 ## ディレクトリ構成
 
