@@ -53,7 +53,7 @@ export const COLLECTORS: CollectorMeta[] = [
     description: "GitHub の課金 API から、当月の Actions 使用分数と超過料金(netAmount)を取得します。",
     caveats: [
       "個人アカウント向け課金 API は「enhanced billing platform」を利用できるアカウントのみ対象と記載されています。",
-      "ユーザー向けエンドポイントに Actions の使用量が含まれるか、必要なトークン権限は公式ドキュメントに明記がありません(要検証)。",
+      "ユーザー向けエンドポイントに Actions の使用量が含まれること、Fine-grained トークンは Account permissions の「Plan: Read-only」で取得できることを実アカウントで確認済み(2026-11-22)。",
       "集計エンドポイント(/usage/summary)はパブリックプレビューです。",
     ],
     docsUrl: "https://docs.github.com/en/rest/billing/usage",
@@ -64,7 +64,7 @@ export const COLLECTORS: CollectorMeta[] = [
         key: "token",
         label: "Personal access token",
         secret: true,
-        help: "読み取り専用・最小権限で発行してください(必要な権限は要検証)。",
+        help: "Fine-grained トークンで、Resource owner を自分にし、Account permissions の「Plan」を Read-only にしてください(これが無いと HTTP 403)。",
       },
     ],
     metrics: [

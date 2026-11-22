@@ -30,7 +30,8 @@
 - 新課金基盤:`GET /users/{username}/settings/billing/usage`。`product = actions` かつ `unitType = minutes` の `quantity` を合計して分数を得る。金額は `netAmount`(有料分)/ `discountAmount`(無料枠分)。
 - 旧 API:`GET /users/{username}/settings/billing/actions`(レガシー。classic PAT は `user` スコープ)。
 - 最新 REST API バージョン表記:2026-03-10(個人アカウント向けの例は 2022-11-28 のものしか確認できず)。
-- **要検証**:fine-grained PAT で必要な権限 / 新 API の個人アカウントでの応答形式 / 旧 API の廃止時期。
+- **確認済み(2026-11-22)**:fine-grained PAT は Account permissions の「Plan: Read-only」が必要(無いと 403)。`/usage/summary` で Actions の分数を取得できる。
+- **要検証**:旧 API の廃止時期。
 - 出典:<https://docs.github.com/rest/billing/enhanced-billing> , <https://docs.github.com/en/rest/billing/usage> , <https://docs.github.com/en/enterprise-cloud@latest/billing/managing-your-billing/automating-usage-reporting>
 
 ### Cloudflare Workers
@@ -100,12 +101,14 @@
 | 日付 | サービス | 確認内容 | 結果 |
 |---|---|---|---|
 | 2026-11-22 | GitHub Actions | 個人アカウント + fine-grained トークンで「今すぐ取得」 | 成功。当月の Actions 分数(108 minutes)を取得できた。ユーザー向けエンドポイントに Actions が含まれることを確認。GitHub の Billing 画面の値との一致は未確認 |
+| 2026-11-22 | GitHub Actions | 本番(Cloudflare)で権限なしの fine-grained トークン | HTTP 403「Resource not accessible by personal access token」。Account permissions の **Plan: Read-only** を付けると成功。→ 必要な権限は Plan: Read-only と確定 |
+| 2026-11-22 | Discord 通知 | 本番で Webhook URL を保存し「テスト送信」 | 成功。指定チャンネルにテスト通知が届いた |
 
 ## 実装状況(第3段階)
 
 | コレクター ID | 状態 | テスト | 実アカウント検証 |
 |---|---|---|---|
-| `github-actions` | 実装済み | 偽の応答で確認(集計、404 時の切り替え) | 未 |
+| `github-actions` | 実装済み | 偽の応答で確認(集計、404 時の切り替え) | **済**(ローカル・本番、2026-11-22) |
 | `cloudflare-workers` | 実装済み | 偽の応答で確認(合計、GraphQL エラー、アカウントなし) | 未 |
 | `openai-costs` | 実装済み | 偽の応答で確認(ページ送り、USD 以外) | 未 |
 | `google-drive` | 実装済み | 偽の応答で確認(トークン更新、上限なし、失効) | 未 |

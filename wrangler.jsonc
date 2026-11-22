@@ -4,6 +4,8 @@
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-11-01",
   "observability": { "enabled": true },
+  // 版ごとの確認用 URL(*-usage-management.….workers.dev)は使わないので無効
+  "preview_urls": false,
   // React SPA(dist/client)を配信。/api/* だけ Worker を先に通す
   "assets": {
     "not_found_handling": "single-page-application",
@@ -13,8 +15,8 @@
     {
       "binding": "DB",
       "database_name": "usage-management",
-      // `npx wrangler d1 create usage-management` の出力した ID に置き換える(ローカル開発はこのままで可)
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // 本番の D1(2026-11-22 作成)。ローカル開発は .wrangler/state のローカル DB を使う
+      "database_id": "9c83cf4a-2c47-4340-93e7-c98829e9b758",
       "migrations_dir": "migrations"
     }
   ],
@@ -23,8 +25,8 @@
   "vars": {
     // 本番では Cloudflare Access の JWT 検証を必須にする(未設定なら API は 503 を返す=fail closed)
     "REQUIRE_ACCESS": "true",
-    "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": "",
+    "ACCESS_TEAM_DOMAIN": "tomei-usage.cloudflareaccess.com",
+    "ACCESS_AUD": "861f05c83065ff398faf468ee5dc3fb0566a6c97ac7076e0f77439feffbea5c6",
     // 通知文の日付のタイムゾーン
     "TIMEZONE": "Asia/Tokyo"
   }
